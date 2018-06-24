@@ -1,10 +1,13 @@
+[![crates.io](https://img.shields.io/crates/v/r2d2-mongodb.svg)](https://crates.io/crates/r2d2-mongodb)
+[![docs.rs](https://img.shields.io/badge/docs.rs-r2d2--mongodb-green.svg)](https://docs.rs/r2d2-mongodb)
+
 # r2d2-mongodb
 
 A MongoDB adaptor for r2d2 connection pool.
 
 ## Documentation
 
-Coming soon...
+[In progress...](https://docs.rs/r2d2-mongodb)
 
 ## Example usage
 
