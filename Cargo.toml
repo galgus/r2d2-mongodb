@@ -2,6 +2,8 @@
 authors = ["Peter Majchrak <petoknm@gmail.com>"]
 name = "r2d2-mongodb"
 version = "0.1.0"
+description = "A MongoDB adaptor for r2d2 connection pool"
+license = "GPLv3"
 [dependencies]
 mongodb = "0.3.7"
 r2d2 = "0.8.2"
