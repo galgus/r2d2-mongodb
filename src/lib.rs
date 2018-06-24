@@ -107,7 +107,7 @@ impl ConnectionOptionsBuilder {
         self
     }
 
-    pub fn build(&mut self) -> ConnectionOptions {
+    pub fn build(&self) -> ConnectionOptions {
         self.0.clone()
     }
 }
