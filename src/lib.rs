@@ -1,5 +1,5 @@
-extern crate mongodb;
-extern crate r2d2;
+pub extern crate mongodb;
+pub extern crate r2d2;
 
 use r2d2::ManageConnection;
 use mongodb::{ThreadedClient, Client, Error};
