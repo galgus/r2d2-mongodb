@@ -82,27 +82,27 @@ impl ConnectionOptionsBuilder {
         ConnectionOptionsBuilder(ConnectionOptions::default())
     }
 
-    pub fn with_host<'a>(&'a mut self, host: &str) -> &'a mut ConnectionOptionsBuilder {
+    pub fn with_host(&mut self, host: &str) -> &mut ConnectionOptionsBuilder {
         self.0.host = host.to_string();
         self
     }
 
-    pub fn with_port<'a>(&'a mut self, port: u16) -> &'a mut ConnectionOptionsBuilder {
+    pub fn with_port(&mut self, port: u16) -> &mut ConnectionOptionsBuilder {
         self.0.port = port;
         self
     }
 
-    pub fn with_db<'a>(&'a mut self, db: &str) -> &'a mut ConnectionOptionsBuilder {
+    pub fn with_db(&mut self, db: &str) -> &mut ConnectionOptionsBuilder {
         self.0.db = db.to_string();
         self
     }
 
-    pub fn with_username<'a>(&'a mut self, username: &str) -> &'a mut ConnectionOptionsBuilder {
+    pub fn with_username(&mut self, username: &str) -> &mut ConnectionOptionsBuilder {
         self.0.username = Some(username.to_string());
         self
     }
 
-    pub fn with_password<'a>(&'a mut self, password: &str) -> &'a mut ConnectionOptionsBuilder {
+    pub fn with_password(&mut self, password: &str) -> &mut ConnectionOptionsBuilder {
         self.0.password = Some(password.to_string());
         self
     }
@@ -122,6 +122,30 @@ impl MongodbConnectionManager {
         MongodbConnectionManager {
             options
         }
+    }
+
+    pub fn new_with_uri(uri: &str) -> MongodbConnectionManager {
+        let mut options = ConnectionOptionsBuilder::new();
+        if let Ok(connection_string) = mongodb::connstring::parse(uri) {
+            if connection_string.database.is_some() {
+                options.with_db(&connection_string.database.unwrap());
+            }
+
+            if connection_string.user.is_some() {
+                options.with_username(&connection_string.user.unwrap());
+            }
+
+            if connection_string.password.is_some() {
+                options.with_password(&connection_string.password.unwrap());
+            }
+
+            if connection_string.hosts.len() > 0 {
+                options.with_host(&connection_string.hosts[0].host_name);
+                options.with_port(connection_string.hosts[0].port);
+            }
+        }
+
+        MongodbConnectionManager { options: options.build() }
     }
 }
 
