@@ -17,10 +17,10 @@
 //!             .build()
 //!     );
 //!
-//!     let pool = Pool::builder()
-//!         .max_size(16)
-//!         .build(manager)
-//!         .unwrap();
+//!     // let pool = Pool::builder()
+//!     //     .max_size(16)
+//!     //     .build(manager)
+//!     //     .unwrap();
 //!
 //!     // ...
 //! }
