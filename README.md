@@ -11,6 +11,12 @@ A MongoDB adaptor for r2d2 connection pool.
 
 ## Example usage
 
+Start mongodb:
+
+```shell
+$ docker run --rm -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME=root -e MONGO_INITDB_ROOT_PASSWORD=password -e MONGO_INITDB_DATABASE=mydb mongo:latest
+```
+
 ```rust
 extern crate r2d2;
 extern crate r2d2_mongodb;
@@ -27,10 +33,10 @@ fn main () {
             .build()
     );
 
-    // let pool = Pool::builder()
-    //     .max_size(16)
-    //     .build(manager)
-    //     .unwrap();
+    let pool = Pool::builder()
+        .max_size(16)
+        .build(manager)
+        .unwrap();
 
     // ...
 }
