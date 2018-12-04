@@ -21,19 +21,17 @@ use r2d2_mongodb::{ConnectionOptionsBuilder, MongodbConnectionManager};
 fn main () {
     let manager = MongodbConnectionManager::new(
         ConnectionOptionsBuilder::new()
-            .with_host("localhost")
-            .with_port(27017)
-            .with_db("admin")
-            .with_username("root")
-            .with_password("password")
+            .with_host("localhost", 27017)
+            .with_db("mydb")
+            .with_auth("root", "password")
             .build()
     );
 
-    let pool = Pool::builder()
-        .max_size(64)
-        .build(manager)
-        .unwrap();
+    // let pool = Pool::builder()
+    //     .max_size(16)
+    //     .build(manager)
+    //     .unwrap();
 
-    //...
+    // ...
 }
 ```
