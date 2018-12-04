@@ -124,28 +124,29 @@ impl MongodbConnectionManager {
         }
     }
 
-    pub fn new_with_uri(uri: &str) -> MongodbConnectionManager {
-        let mut options = ConnectionOptionsBuilder::new();
-        if let Ok(connection_string) = mongodb::connstring::parse(uri) {
-            if connection_string.database.is_some() {
-                options.with_db(&connection_string.database.unwrap());
-            }
+    pub fn new_with_uri(uri: &str) -> Result<MongodbConnectionManager, Error> {
+        let cs = mongodb::connstring::parse(uri)?;
+        let mut options_builder = ConnectionOptionsBuilder::new();
 
-            if connection_string.user.is_some() {
-                options.with_username(&connection_string.user.unwrap());
-            }
-
-            if connection_string.password.is_some() {
-                options.with_password(&connection_string.password.unwrap());
-            }
-
-            if connection_string.hosts.len() > 0 {
-                options.with_host(&connection_string.hosts[0].host_name);
-                options.with_port(connection_string.hosts[0].port);
-            }
+        if let Some(db) = cs.database {
+            options_builder.with_db(&db);
         }
 
-        MongodbConnectionManager { options: options.build() }
+        if let Some(user) = cs.user {
+            options_builder.with_username(&user);
+        }
+
+        if let Some(password) = cs.password {
+            options_builder.with_password(&password);
+        }
+
+        for host in cs.hosts {
+            options_builder.with_host(&host.host_name);
+            options_builder.with_port(host.port);
+        }
+
+        let options = options_builder.build();
+        Ok(MongodbConnectionManager { options })
     }
 }
 
