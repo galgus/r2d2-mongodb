@@ -1,0 +1,7 @@
+stages: [ test ]
+
+test:
+  stage: test
+  image: rust:slim
+  script:
+    - cargo test
