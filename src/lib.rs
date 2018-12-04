@@ -11,65 +11,86 @@
 //! fn main () {
 //!     let manager = MongodbConnectionManager::new(
 //!         ConnectionOptionsBuilder::new()
-//!             .with_host("localhost")
-//!             .with_port(27017)
-//!             .with_db("admin")
-//!             .with_username("root")
-//!             .with_password("password")
+//!             .with_host("localhost", 27017)
+//!             .with_db("mydb")
+//!             .with_auth("root", "password")
 //!             .build()
 //!     );
 //!
-//!     let pool = Pool::builder()
-//!         .max_size(64)
-//!         .build(manager)
-//!         .unwrap();
+//!     // let pool = Pool::builder()
+//!     //     .max_size(16)
+//!     //     .build(manager)
+//!     //     .unwrap();
 //!
-//!     //...
+//!     // ...
 //! }
 //! ```
 
 pub extern crate mongodb;
 pub extern crate r2d2;
+extern crate rand;
 
 use r2d2::ManageConnection;
 use mongodb::{ThreadedClient, Client, Error};
 use mongodb::db::{ThreadedDatabase, Database};
+use mongodb::connstring::parse;
+use rand::thread_rng;
+use rand::seq::SliceRandom;
+
+#[derive(Clone)]
+pub struct Host {
+    /// Address of the MongoDB server
+    ///
+    /// Default: `"localhost"`
+    pub hostname: String,
+    /// Port on which to connect
+    ///
+    /// Default: `27017`
+    pub port: u16,
+}
+
+impl Default for Host {
+    fn default() -> Host {
+        Host {
+            hostname: "localhost".to_string(),
+            port: 27017
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Auth {
+    /// Username for authentication
+    pub username: String,
+    /// Password for authentication
+    pub password: String,
+}
 
 /// Options with which the connections to MongoDB will be created
 ///
 /// To authenticate the connection you have to provide both a `username` and `password`.
 #[derive(Clone)]
 pub struct ConnectionOptions {
-    /// Address of the MongoDB server
+    /// List of hosts
     ///
-    /// Default: `"localhost"`
-    pub host: String,
-    /// Port on which to connect
-    ///
-    /// Default: `27017`
-    pub port: u16,
+    /// Default: vec![Host::default()]
+    pub hosts: Vec<Host>,
     /// Name of the database to connect to
     ///
     /// Default: `"admin"`
     pub db: String,
-    /// Username for authentication
+    /// Authentication options
     ///
     /// Default: `None`
-    pub username: Option<String>,
-    /// Password for authentication
-    ///
-    /// Default: `None`
-    pub password: Option<String>,
+    pub auth: Option<Auth>,
 }
 
 impl Default for ConnectionOptions {
     fn default() -> ConnectionOptions {
         ConnectionOptions {
-            host: "localhost".to_string(),
-            port: 27017,
+            hosts: vec![Host::default()],
             db: "admin".to_string(),
-            username: None,
-            password: None,
+            auth: None,
         }
     }
 }
@@ -82,13 +103,11 @@ impl ConnectionOptionsBuilder {
         ConnectionOptionsBuilder(ConnectionOptions::default())
     }
 
-    pub fn with_host(&mut self, host: &str) -> &mut ConnectionOptionsBuilder {
-        self.0.host = host.to_string();
-        self
-    }
-
-    pub fn with_port(&mut self, port: u16) -> &mut ConnectionOptionsBuilder {
-        self.0.port = port;
+    pub fn with_host(&mut self, hostname: &str, port: u16) -> &mut ConnectionOptionsBuilder {
+        self.0.hosts.push(Host{
+            hostname: hostname.to_string(),
+            port
+        });
         self
     }
 
@@ -97,13 +116,11 @@ impl ConnectionOptionsBuilder {
         self
     }
 
-    pub fn with_username(&mut self, username: &str) -> &mut ConnectionOptionsBuilder {
-        self.0.username = Some(username.to_string());
-        self
-    }
-
-    pub fn with_password(&mut self, password: &str) -> &mut ConnectionOptionsBuilder {
-        self.0.password = Some(password.to_string());
+    pub fn with_auth(&mut self, username: &str, password: &str) -> &mut ConnectionOptionsBuilder {
+        self.0.auth = Some(Auth{
+            username: username.to_string(),
+            password: password.to_string(),
+        });
         self
     }
 
@@ -125,24 +142,19 @@ impl MongodbConnectionManager {
     }
 
     pub fn new_with_uri(uri: &str) -> Result<MongodbConnectionManager, Error> {
-        let cs = mongodb::connstring::parse(uri)?;
+        let cs = parse(uri)?;
         let mut options_builder = ConnectionOptionsBuilder::new();
 
         if let Some(db) = cs.database {
             options_builder.with_db(&db);
         }
 
-        if let Some(user) = cs.user {
-            options_builder.with_username(&user);
+        if let (Some(user), Some(password)) = (cs.user, cs.password) {
+            options_builder.with_auth(&user, &password);
         }
 
-        if let Some(password) = cs.password {
-            options_builder.with_password(&password);
-        }
-
-        for host in cs.hosts {
-            options_builder.with_host(&host.host_name);
-            options_builder.with_port(host.port);
+        for h in cs.hosts {
+            options_builder.with_host(&h.host_name, h.port);
         }
 
         let options = options_builder.build();
@@ -155,18 +167,23 @@ impl ManageConnection for MongodbConnectionManager {
     type Error = Error;
 
     fn connect(&self) -> Result<Database, Error> {
-        let client = Client::connect(&self.options.host, self.options.port)?;
+        let mut rng = thread_rng();
+        let host = self.options.hosts.as_slice().choose(&mut rng)
+            .ok_or(Error::ArgumentError("No host provided".into()))?;
+
+        let client = Client::connect(&host.hostname, host.port)?;
         let db = client.db(&self.options.db);
 
-        if let (&Some(ref username), &Some(ref password)) = (&self.options.username, &self.options.password) {
-            db.auth(&username, &password)?;
+        if let Some(ref auth) = self.options.auth {
+            db.auth(&auth.username, &auth.password)?;
         }
 
         Ok(db)
     }
 
     fn is_valid(&self, db: &mut Database) -> Result<(), Error> {
-        db.version().map(|_| ())
+        db.version()?;
+        Ok(())
     }
 
     fn has_broken(&self, _db: &mut Database) -> bool {
