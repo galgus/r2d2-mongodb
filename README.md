@@ -22,11 +22,11 @@ extern crate r2d2;
 extern crate r2d2_mongodb;
 
 use r2d2::Pool;
-use r2d2_mongodb::{ConnectionOptionsBuilder, MongodbConnectionManager};
+use r2d2_mongodb::{ConnectionOptions, MongodbConnectionManager};
 
 fn main () {
     let manager = MongodbConnectionManager::new(
-        ConnectionOptionsBuilder::new()
+        ConnectionOptions::builder()
             .with_host("localhost", 27017)
             .with_db("mydb")
             .with_auth("root", "password")

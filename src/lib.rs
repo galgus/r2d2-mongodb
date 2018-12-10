@@ -6,11 +6,11 @@
 //! extern crate r2d2_mongodb;
 //!
 //! use r2d2::Pool;
-//! use r2d2_mongodb::{ConnectionOptionsBuilder, MongodbConnectionManager};
+//! use r2d2_mongodb::{ConnectionOptions, MongodbConnectionManager};
 //!
 //! fn main () {
 //!     let manager = MongodbConnectionManager::new(
-//!         ConnectionOptionsBuilder::new()
+//!         ConnectionOptions::builder()
 //!             .with_host("localhost", 27017)
 //!             .with_db("mydb")
 //!             .with_auth("root", "password")
@@ -95,14 +95,16 @@ impl Default for ConnectionOptions {
     }
 }
 
+impl ConnectionOptions {
+    pub fn builder() -> ConnectionOptionsBuilder {
+        ConnectionOptionsBuilder(ConnectionOptions::default())
+    }
+}
+
 /// Builder for `ConnectionOptions`
 pub struct ConnectionOptionsBuilder(ConnectionOptions);
 
 impl ConnectionOptionsBuilder {
-    pub fn new() -> ConnectionOptionsBuilder {
-        ConnectionOptionsBuilder(ConnectionOptions::default())
-    }
-
     pub fn with_host(&mut self, hostname: &str, port: u16) -> &mut ConnectionOptionsBuilder {
         self.0.hosts.push(Host{
             hostname: hostname.to_string(),
@@ -143,7 +145,7 @@ impl MongodbConnectionManager {
 
     pub fn new_with_uri(uri: &str) -> Result<MongodbConnectionManager, Error> {
         let cs = parse(uri)?;
-        let mut options_builder = ConnectionOptionsBuilder::new();
+        let mut options_builder = ConnectionOptions::builder();
 
         if let Some(db) = cs.database {
             options_builder.with_db(&db);
