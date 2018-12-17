@@ -73,7 +73,7 @@ pub struct Auth {
 pub struct ConnectionOptions {
     /// List of hosts
     ///
-    /// Default: vec![Host::default()]
+    /// Default: `vec![Host::default()]`
     pub hosts: Vec<Host>,
     /// Name of the database to connect to
     ///
