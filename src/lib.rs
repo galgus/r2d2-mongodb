@@ -154,15 +154,18 @@ impl ConnectionOptionsBuilder {
 
     pub fn with_ssl(
         &mut self,
-        ca_file: Option<String>,
-        certificate_file: String,
-        key_file: String,
+        ca_file: Option<&str>,
+        certificate_file: &str,
+        key_file: &str,
         verify_peer: bool,
     ) -> &mut ConnectionOptionsBuilder {
         self.0.ssl = Some(SSLConfig {
-            ca_file,
-            certificate_file: Some(certificate_file),
-            key_file: Some(key_file),
+            ca_file: match ca_file {
+                Some(ca_file) => Some(ca_file.to_string()),
+                None => None
+            },
+            certificate_file: Some(certificate_file.to_string()),
+            key_file: Some(key_file.to_string()),
             verify_peer,
             kind: SSLKind::Authenticated,
         });
@@ -171,11 +174,14 @@ impl ConnectionOptionsBuilder {
 
     pub fn with_unauthenticated_ssl(
         &mut self,
-        ca_file: Option<String>,
+        ca_file: Option<&str>,
         verify_peer: bool,
     ) -> &mut ConnectionOptionsBuilder {
         self.0.ssl = Some(SSLConfig {
-            ca_file,
+            ca_file: match ca_file {
+                Some(ca_file) => Some(ca_file.to_string()),
+                None => None
+            },
             certificate_file: None,
             key_file: None,
             verify_peer,
