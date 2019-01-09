@@ -94,7 +94,7 @@ pub struct SSLConfig {
 pub struct ConnectionOptions {
     /// List of hosts
     ///
-    /// Default: `vec![Host::default()]`
+    /// Default: `vec![]`
     pub hosts: Vec<Host>,
     /// Name of the database to connect to
     ///
@@ -113,7 +113,7 @@ pub struct ConnectionOptions {
 impl Default for ConnectionOptions {
     fn default() -> ConnectionOptions {
         ConnectionOptions {
-            hosts: vec![Host::default()],
+            hosts: vec![],
             db: "admin".to_string(),
             auth: None,
             ssl: None,
