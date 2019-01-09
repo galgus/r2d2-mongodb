@@ -6,7 +6,7 @@
 //! extern crate r2d2_mongodb;
 //!
 //! use r2d2::Pool;
-//! use r2d2_mongodb::{ConnectionOptions, MongodbConnectionManager};
+//! use r2d2_mongodb::{ConnectionOptions, MongodbConnectionManager, VerifyPeer};
 //!
 //! fn main () {
 //!     let manager = MongodbConnectionManager::new(
@@ -16,7 +16,7 @@
 //!                 Some("path/to/ca.crt"),
 //!                 "path/to/client.crt",
 //!                 "path/to/client.key",
-//!                 true
+//!                 VerifyPeer::Verify
 //!             )
 //!             .with_db("mydb")
 //!             .with_auth("root", "password")
@@ -72,10 +72,11 @@ pub struct Auth {
     pub password: String,
 }
 
+/// Whether or not to verify that the server's certificate is trusted
 #[derive(Clone)]
-pub enum SSLKind {
-    Authenticated,
-    Unauthenticated,
+pub enum VerifyPeer {
+    Verify,
+    AcceptAll
 }
 
 #[derive(Clone)]
@@ -83,8 +84,7 @@ pub struct SSLConfig {
     pub ca_file: Option<String>,
     pub certificate_file: Option<String>,
     pub key_file: Option<String>,
-    pub verify_peer: bool,
-    pub kind: SSLKind,
+    pub verify_peer: VerifyPeer,
 }
 
 /// Options with which the connections to MongoDB will be created
@@ -157,17 +157,13 @@ impl ConnectionOptionsBuilder {
         ca_file: Option<&str>,
         certificate_file: &str,
         key_file: &str,
-        verify_peer: bool,
+        verify_peer: VerifyPeer,
     ) -> &mut ConnectionOptionsBuilder {
         self.0.ssl = Some(SSLConfig {
-            ca_file: match ca_file {
-                Some(ca_file) => Some(ca_file.to_string()),
-                None => None
-            },
+            ca_file: ca_file.map(|s| s.to_string()),
             certificate_file: Some(certificate_file.to_string()),
             key_file: Some(key_file.to_string()),
             verify_peer,
-            kind: SSLKind::Authenticated,
         });
         self
     }
@@ -175,17 +171,13 @@ impl ConnectionOptionsBuilder {
     pub fn with_unauthenticated_ssl(
         &mut self,
         ca_file: Option<&str>,
-        verify_peer: bool,
+        verify_peer: VerifyPeer,
     ) -> &mut ConnectionOptionsBuilder {
         self.0.ssl = Some(SSLConfig {
-            ca_file: match ca_file {
-                Some(ca_file) => Some(ca_file.to_string()),
-                None => None
-            },
+            ca_file: ca_file.map(|s| s.to_string()),
             certificate_file: None,
             key_file: None,
             verify_peer,
-            kind: SSLKind::Unauthenticated,
         });
         self
     }
@@ -241,8 +233,13 @@ impl ManageConnection for MongodbConnectionManager {
 
         let client = match &self.options.ssl {
             Some(ssl_options) => {
-                let client_options = match ssl_options.kind {
-                    SSLKind::Authenticated => mongodb::ClientOptions::with_ssl(
+
+                let verify_peer = match ssl_options.verify_peer {
+                    VerifyPeer::Verify => true,
+                    VerifyPeer::AcceptAll => false
+                };
+                let client_options = match &ssl_options.certificate_file {
+                    Some(_) => mongodb::ClientOptions::with_ssl(
                         match &ssl_options.ca_file {
                             Some(ca_file) => Some(ca_file.as_str()),
                             None => None
@@ -255,14 +252,14 @@ impl ManageConnection for MongodbConnectionManager {
                             Some(key_file) => key_file.as_str(),
                             None => panic!("key_file is required with SSLKind::Authenticated")
                         },
-                        ssl_options.verify_peer,
+                        verify_peer,
                     ),
-                    SSLKind::Unauthenticated => mongodb::ClientOptions::with_unauthenticated_ssl(
+                    None => mongodb::ClientOptions::with_unauthenticated_ssl(
                         match &ssl_options.ca_file {
                             Some(ca_file) => Some(ca_file.as_str()),
                             None => None
                         },
-                        ssl_options.verify_peer,
+                        verify_peer,
                     ),
                 };
                 Client::connect_with_options(&host.hostname, host.port, client_options)?
