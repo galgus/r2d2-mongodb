@@ -6,12 +6,18 @@
 //! extern crate r2d2_mongodb;
 //!
 //! use r2d2::Pool;
-//! use r2d2_mongodb::{ConnectionOptions, MongodbConnectionManager};
+//! use r2d2_mongodb::{ConnectionOptions, MongodbConnectionManager, VerifyPeer};
 //!
 //! fn main () {
 //!     let manager = MongodbConnectionManager::new(
 //!         ConnectionOptions::builder()
 //!             .with_host("localhost", 27017)
+//!             .with_ssl(
+//!                 Some("path/to/ca.crt"),
+//!                 "path/to/client.crt",
+//!                 "path/to/client.key",
+//!                 VerifyPeer::Verify
+//!             )
 //!             .with_db("mydb")
 //!             .with_auth("root", "password")
 //!             .build()
@@ -30,12 +36,12 @@ pub extern crate mongodb;
 pub extern crate r2d2;
 extern crate rand;
 
-use r2d2::ManageConnection;
-use mongodb::{ThreadedClient, Client, Error};
-use mongodb::db::{ThreadedDatabase, Database};
 use mongodb::connstring::parse;
-use rand::thread_rng;
+use mongodb::db::{Database, ThreadedDatabase};
+use mongodb::{Client, Error, ThreadedClient};
+use r2d2::ManageConnection;
 use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 #[derive(Clone)]
 pub struct Host {
@@ -53,7 +59,7 @@ impl Default for Host {
     fn default() -> Host {
         Host {
             hostname: "localhost".to_string(),
-            port: 27017
+            port: 27017,
         }
     }
 }
@@ -64,6 +70,26 @@ pub struct Auth {
     pub username: String,
     /// Password for authentication
     pub password: String,
+}
+
+/// Whether or not to verify that the server's certificate is trusted
+#[derive(Clone)]
+pub enum VerifyPeer {
+    Verify,
+    AcceptAll,
+}
+
+#[derive(Clone)]
+pub struct SSLCert {
+    pub certificate_file: String,
+    pub key_file: String,
+}
+
+#[derive(Clone)]
+pub struct SSLConfig {
+    pub ca_file: Option<String>,
+    pub cert: Option<SSLCert>,
+    pub verify_peer: VerifyPeer,
 }
 
 /// Options with which the connections to MongoDB will be created
@@ -83,6 +109,10 @@ pub struct ConnectionOptions {
     ///
     /// Default: `None`
     pub auth: Option<Auth>,
+    /// SSL options
+    ///
+    /// Default: `None`
+    pub ssl: Option<SSLConfig>,
 }
 
 impl Default for ConnectionOptions {
@@ -91,6 +121,7 @@ impl Default for ConnectionOptions {
             hosts: vec![],
             db: "admin".to_string(),
             auth: None,
+            ssl: None,
         }
     }
 }
@@ -106,9 +137,9 @@ pub struct ConnectionOptionsBuilder(ConnectionOptions);
 
 impl ConnectionOptionsBuilder {
     pub fn with_host(&mut self, hostname: &str, port: u16) -> &mut ConnectionOptionsBuilder {
-        self.0.hosts.push(Host{
+        self.0.hosts.push(Host {
             hostname: hostname.to_string(),
-            port
+            port,
         });
         self
     }
@@ -119,9 +150,40 @@ impl ConnectionOptionsBuilder {
     }
 
     pub fn with_auth(&mut self, username: &str, password: &str) -> &mut ConnectionOptionsBuilder {
-        self.0.auth = Some(Auth{
+        self.0.auth = Some(Auth {
             username: username.to_string(),
             password: password.to_string(),
+        });
+        self
+    }
+
+    pub fn with_ssl(
+        &mut self,
+        ca_file: Option<&str>,
+        certificate_file: &str,
+        key_file: &str,
+        verify_peer: VerifyPeer,
+    ) -> &mut ConnectionOptionsBuilder {
+        self.0.ssl = Some(SSLConfig {
+            ca_file: ca_file.map(|s| s.to_string()),
+            cert: Some(SSLCert {
+                certificate_file: certificate_file.to_string(),
+                key_file: key_file.to_string(),
+            }),
+            verify_peer,
+        });
+        self
+    }
+
+    pub fn with_unauthenticated_ssl(
+        &mut self,
+        ca_file: Option<&str>,
+        verify_peer: VerifyPeer,
+    ) -> &mut ConnectionOptionsBuilder {
+        self.0.ssl = Some(SSLConfig {
+            ca_file: ca_file.map(|s| s.to_string()),
+            cert: None,
+            verify_peer,
         });
         self
     }
@@ -138,9 +200,7 @@ pub struct MongodbConnectionManager {
 
 impl MongodbConnectionManager {
     pub fn new(options: ConnectionOptions) -> MongodbConnectionManager {
-        MongodbConnectionManager {
-            options
-        }
+        MongodbConnectionManager { options }
     }
 
     pub fn new_with_uri(uri: &str) -> Result<MongodbConnectionManager, Error> {
@@ -170,10 +230,41 @@ impl ManageConnection for MongodbConnectionManager {
 
     fn connect(&self) -> Result<Database, Error> {
         let mut rng = thread_rng();
-        let host = self.options.hosts.as_slice().choose(&mut rng)
+        let host = self
+            .options
+            .hosts
+            .as_slice()
+            .choose(&mut rng)
             .ok_or(Error::ArgumentError("No host provided".into()))?;
 
-        let client = Client::connect(&host.hostname, host.port)?;
+        let client = match &self.options.ssl {
+            Some(ssl_options) => {
+                let verify_peer = match ssl_options.verify_peer {
+                    VerifyPeer::Verify => true,
+                    VerifyPeer::AcceptAll => false,
+                };
+                let client_options = match &ssl_options.cert {
+                    Some(cert) => mongodb::ClientOptions::with_ssl(
+                        match &ssl_options.ca_file {
+                            Some(ca_file) => Some(ca_file.as_str()),
+                            None => None,
+                        },
+                        cert.certificate_file.as_str(),
+                        cert.key_file.as_str(),
+                        verify_peer,
+                    ),
+                    None => mongodb::ClientOptions::with_unauthenticated_ssl(
+                        match &ssl_options.ca_file {
+                            Some(ca_file) => Some(ca_file.as_str()),
+                            None => None,
+                        },
+                        verify_peer,
+                    ),
+                };
+                Client::connect_with_options(&host.hostname, host.port, client_options)?
+            }
+            None => Client::connect(&host.hostname, host.port)?,
+        };
         let db = client.db(&self.options.db);
 
         if let Some(ref auth) = self.options.auth {
