@@ -12,12 +12,16 @@
 //!     let manager = MongodbConnectionManager::new(
 //!         ConnectionOptions::builder()
 //!             .with_host("localhost", 27017)
-//!             .with_ssl(
-//!                 Some("path/to/ca.crt"),
-//!                 "path/to/client.crt",
-//!                 "path/to/client.key",
-//!                 VerifyPeer::Verify
-//!             )
+//!          // .with_ssl(
+//!          //     Some("path/to/ca.crt"),
+//!          //     "path/to/client.crt",
+//!          //     "path/to/client.key",
+//!          //     VerifyPeer::Yes
+//!          // )
+//!          // .with_unauthenticated_ssl(
+//!          //     Some("path/to/ca.crt"),
+//!          //     VerifyPeer::No
+//!          // )
 //!             .with_db("mydb")
 //!             .with_auth("root", "password")
 //!             .build()
@@ -163,36 +167,36 @@ impl ConnectionOptionsBuilder {
         self
     }
 
-    // pub fn with_ssl(
-    //     &mut self,
-    //     ca_file: Option<&str>,
-    //     certificate_file: &str,
-    //     key_file: &str,
-    //     verify_peer: VerifyPeer,
-    // ) -> &mut ConnectionOptionsBuilder {
-    //     self.0.ssl = Some(SSLConfig {
-    //         ca_file: ca_file.map(|s| s.to_string()),
-    //         cert: Some(SSLCert {
-    //             certificate_file: certificate_file.to_string(),
-    //             key_file: key_file.to_string(),
-    //         }),
-    //         verify_peer,
-    //     });
-    //     self
-    // }
-    //
-    // pub fn with_unauthenticated_ssl(
-    //     &mut self,
-    //     ca_file: Option<&str>,
-    //     verify_peer: VerifyPeer,
-    // ) -> &mut ConnectionOptionsBuilder {
-    //     self.0.ssl = Some(SSLConfig {
-    //         ca_file: ca_file.map(|s| s.to_string()),
-    //         cert: None,
-    //         verify_peer,
-    //     });
-    //     self
-    // }
+    pub fn with_ssl(
+        &mut self,
+        ca_file: Option<&str>,
+        certificate_file: &str,
+        key_file: &str,
+        verify_peer: VerifyPeer,
+    ) -> &mut ConnectionOptionsBuilder {
+        self.0.ssl = Some(SSLConfig {
+            ca_file: ca_file.map(|s| s.to_string()),
+            cert: Some(SSLCert {
+                certificate_file: certificate_file.to_string(),
+                key_file: key_file.to_string(),
+            }),
+            verify_peer,
+        });
+        self
+    }
+
+    pub fn with_unauthenticated_ssl(
+        &mut self,
+        ca_file: Option<&str>,
+        verify_peer: VerifyPeer,
+    ) -> &mut ConnectionOptionsBuilder {
+        self.0.ssl = Some(SSLConfig {
+            ca_file: ca_file.map(|s| s.to_string()),
+            cert: None,
+            verify_peer,
+        });
+        self
+    }
 
     pub fn build(&self) -> ConnectionOptions {
         self.0.clone()
