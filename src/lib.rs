@@ -76,14 +76,19 @@ pub struct Auth {
 #[derive(Clone)]
 pub enum VerifyPeer {
     Verify,
-    AcceptAll
+    AcceptAll,
+}
+
+#[derive(Clone)]
+pub struct SSLCert {
+    pub certificate_file: String,
+    pub key_file: String,
 }
 
 #[derive(Clone)]
 pub struct SSLConfig {
     pub ca_file: Option<String>,
-    pub certificate_file: Option<String>,
-    pub key_file: Option<String>,
+    pub cert: Option<SSLCert>,
     pub verify_peer: VerifyPeer,
 }
 
@@ -161,8 +166,10 @@ impl ConnectionOptionsBuilder {
     ) -> &mut ConnectionOptionsBuilder {
         self.0.ssl = Some(SSLConfig {
             ca_file: ca_file.map(|s| s.to_string()),
-            certificate_file: Some(certificate_file.to_string()),
-            key_file: Some(key_file.to_string()),
+            cert: Some(SSLCert {
+                certificate_file: certificate_file.to_string(),
+                key_file: key_file.to_string(),
+            }),
             verify_peer,
         });
         self
@@ -175,8 +182,7 @@ impl ConnectionOptionsBuilder {
     ) -> &mut ConnectionOptionsBuilder {
         self.0.ssl = Some(SSLConfig {
             ca_file: ca_file.map(|s| s.to_string()),
-            certificate_file: None,
-            key_file: None,
+            cert: None,
             verify_peer,
         });
         self
@@ -233,31 +239,24 @@ impl ManageConnection for MongodbConnectionManager {
 
         let client = match &self.options.ssl {
             Some(ssl_options) => {
-
                 let verify_peer = match ssl_options.verify_peer {
                     VerifyPeer::Verify => true,
-                    VerifyPeer::AcceptAll => false
+                    VerifyPeer::AcceptAll => false,
                 };
-                let client_options = match &ssl_options.certificate_file {
-                    Some(_) => mongodb::ClientOptions::with_ssl(
+                let client_options = match &ssl_options.cert {
+                    Some(cert) => mongodb::ClientOptions::with_ssl(
                         match &ssl_options.ca_file {
                             Some(ca_file) => Some(ca_file.as_str()),
-                            None => None
+                            None => None,
                         },
-                        match &ssl_options.certificate_file {
-                            Some(certificate_file) => certificate_file.as_str(),
-                            None => panic!("certificate_file is required with SSLKind::Authenticated")
-                        },
-                        match &ssl_options.key_file {
-                            Some(key_file) => key_file.as_str(),
-                            None => panic!("key_file is required with SSLKind::Authenticated")
-                        },
+                        cert.certificate_file.as_str(),
+                        cert.key_file.as_str(),
                         verify_peer,
                     ),
                     None => mongodb::ClientOptions::with_unauthenticated_ssl(
                         match &ssl_options.ca_file {
                             Some(ca_file) => Some(ca_file.as_str()),
-                            None => None
+                            None => None,
                         },
                         verify_peer,
                     ),
