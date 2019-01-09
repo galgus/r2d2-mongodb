@@ -13,7 +13,7 @@
 //!         ConnectionOptions::builder()
 //!             .with_host("localhost", 27017)
 //!             .with_ssl(
-//!                 "path/to/ca.crt",
+//!                 Some("path/to/ca.crt"),
 //!                 "path/to/client.crt",
 //!                 "path/to/client.key",
 //!                 true
