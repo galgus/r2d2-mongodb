@@ -8,6 +8,6 @@ keywords = ["r2d2", "database", "mongo", "mongodb", "pool"]
 readme = "README.md"
 repository = "https://gitlab.com/petoknm/r2d2-mongodb"
 [dependencies]
-mongodb = {version = "0.3.12", features = [ 'ssl' ] }
+mongodb = { version = "0.3.12", features = [ 'ssl' ] }
 r2d2 = "0.8.3"
-rand = "0.6.1"
+rand = "0.6.4"
