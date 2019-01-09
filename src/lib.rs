@@ -38,7 +38,7 @@ extern crate rand;
 
 use mongodb::connstring::parse;
 use mongodb::db::{Database, ThreadedDatabase};
-use mongodb::{Client, Error, ThreadedClient};
+use mongodb::{Client, ClientOptions, Error, ThreadedClient};
 use r2d2::ManageConnection;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -73,10 +73,16 @@ pub struct Auth {
 }
 
 /// Whether or not to verify that the server's certificate is trusted
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum VerifyPeer {
-    Verify,
-    AcceptAll,
+    Yes,
+    No,
+}
+
+impl Default for VerifyPeer {
+    fn default() -> Self {
+        VerifyPeer::Yes
+    }
 }
 
 #[derive(Clone)]
@@ -85,7 +91,7 @@ pub struct SSLCert {
     pub key_file: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SSLConfig {
     pub ca_file: Option<String>,
     pub cert: Option<SSLCert>,
@@ -157,36 +163,36 @@ impl ConnectionOptionsBuilder {
         self
     }
 
-    pub fn with_ssl(
-        &mut self,
-        ca_file: Option<&str>,
-        certificate_file: &str,
-        key_file: &str,
-        verify_peer: VerifyPeer,
-    ) -> &mut ConnectionOptionsBuilder {
-        self.0.ssl = Some(SSLConfig {
-            ca_file: ca_file.map(|s| s.to_string()),
-            cert: Some(SSLCert {
-                certificate_file: certificate_file.to_string(),
-                key_file: key_file.to_string(),
-            }),
-            verify_peer,
-        });
-        self
-    }
-
-    pub fn with_unauthenticated_ssl(
-        &mut self,
-        ca_file: Option<&str>,
-        verify_peer: VerifyPeer,
-    ) -> &mut ConnectionOptionsBuilder {
-        self.0.ssl = Some(SSLConfig {
-            ca_file: ca_file.map(|s| s.to_string()),
-            cert: None,
-            verify_peer,
-        });
-        self
-    }
+    // pub fn with_ssl(
+    //     &mut self,
+    //     ca_file: Option<&str>,
+    //     certificate_file: &str,
+    //     key_file: &str,
+    //     verify_peer: VerifyPeer,
+    // ) -> &mut ConnectionOptionsBuilder {
+    //     self.0.ssl = Some(SSLConfig {
+    //         ca_file: ca_file.map(|s| s.to_string()),
+    //         cert: Some(SSLCert {
+    //             certificate_file: certificate_file.to_string(),
+    //             key_file: key_file.to_string(),
+    //         }),
+    //         verify_peer,
+    //     });
+    //     self
+    // }
+    //
+    // pub fn with_unauthenticated_ssl(
+    //     &mut self,
+    //     ca_file: Option<&str>,
+    //     verify_peer: VerifyPeer,
+    // ) -> &mut ConnectionOptionsBuilder {
+    //     self.0.ssl = Some(SSLConfig {
+    //         ca_file: ca_file.map(|s| s.to_string()),
+    //         cert: None,
+    //         verify_peer,
+    //     });
+    //     self
+    // }
 
     pub fn build(&self) -> ConnectionOptions {
         self.0.clone()
@@ -229,42 +235,34 @@ impl ManageConnection for MongodbConnectionManager {
     type Error = Error;
 
     fn connect(&self) -> Result<Database, Error> {
-        let mut rng = thread_rng();
         let host = self
             .options
             .hosts
             .as_slice()
-            .choose(&mut rng)
-            .ok_or(Error::ArgumentError("No host provided".into()))?;
+            .choose(&mut thread_rng())
+            .ok_or(Error::ArgumentError("No host provided".to_string()))?;
 
-        let client = match &self.options.ssl {
-            Some(ssl_options) => {
-                let verify_peer = match ssl_options.verify_peer {
-                    VerifyPeer::Verify => true,
-                    VerifyPeer::AcceptAll => false,
-                };
-                let client_options = match &ssl_options.cert {
-                    Some(cert) => mongodb::ClientOptions::with_ssl(
-                        match &ssl_options.ca_file {
-                            Some(ca_file) => Some(ca_file.as_str()),
-                            None => None,
-                        },
+        let client_options = self
+            .options
+            .ssl
+            .as_ref()
+            .map(|ssl| {
+                let verify_peer = ssl.verify_peer == VerifyPeer::Yes;
+                let ca_file_str = ssl.ca_file.as_ref().map(|s| s.as_str());
+
+                match ssl.cert {
+                    Some(ref cert) => ClientOptions::with_ssl(
+                        ca_file_str,
                         cert.certificate_file.as_str(),
                         cert.key_file.as_str(),
                         verify_peer,
                     ),
-                    None => mongodb::ClientOptions::with_unauthenticated_ssl(
-                        match &ssl_options.ca_file {
-                            Some(ca_file) => Some(ca_file.as_str()),
-                            None => None,
-                        },
-                        verify_peer,
-                    ),
-                };
-                Client::connect_with_options(&host.hostname, host.port, client_options)?
-            }
-            None => Client::connect(&host.hostname, host.port)?,
-        };
+                    None => ClientOptions::with_unauthenticated_ssl(ca_file_str, verify_peer),
+                }
+            })
+            .unwrap_or(ClientOptions::new());
+
+        let client = Client::connect_with_options(&host.hostname, host.port, client_options)?;
         let db = client.db(&self.options.db);
 
         if let Some(ref auth) = self.options.auth {
