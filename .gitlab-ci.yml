@@ -4,4 +4,6 @@ test:
   stage: test
   image: rust:slim
   script:
+    - apt update
+    - apt install -y libssl-dev pkg-config
     - cargo test
