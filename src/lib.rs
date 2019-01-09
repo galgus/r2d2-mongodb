@@ -12,6 +12,12 @@
 //!     let manager = MongodbConnectionManager::new(
 //!         ConnectionOptions::builder()
 //!             .with_host("localhost", 27017)
+//!             .with_ssl(
+//!                 "path/to/ca.crt",
+//!                 "path/to/client.crt",
+//!                 "path/to/client.key",
+//!                 true
+//!             )
 //!             .with_db("mydb")
 //!             .with_auth("root", "password")
 //!             .build()
@@ -30,12 +36,12 @@ pub extern crate mongodb;
 pub extern crate r2d2;
 extern crate rand;
 
-use r2d2::ManageConnection;
-use mongodb::{ThreadedClient, Client, Error};
-use mongodb::db::{ThreadedDatabase, Database};
 use mongodb::connstring::parse;
-use rand::thread_rng;
+use mongodb::db::{Database, ThreadedDatabase};
+use mongodb::{Client, Error, ThreadedClient};
+use r2d2::ManageConnection;
 use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 #[derive(Clone)]
 pub struct Host {
@@ -53,7 +59,7 @@ impl Default for Host {
     fn default() -> Host {
         Host {
             hostname: "localhost".to_string(),
-            port: 27017
+            port: 27017,
         }
     }
 }
@@ -64,6 +70,21 @@ pub struct Auth {
     pub username: String,
     /// Password for authentication
     pub password: String,
+}
+
+#[derive(Clone)]
+pub enum SSLKind {
+    Authenticated,
+    Unauthenticated,
+}
+
+#[derive(Clone)]
+pub struct SSLConfig {
+    pub ca_file: Option<&'static str>,
+    pub certificate_file: Option<&'static str>,
+    pub key_file: Option<&'static str>,
+    pub verify_peer: bool,
+    pub kind: SSLKind,
 }
 
 /// Options with which the connections to MongoDB will be created
@@ -83,6 +104,10 @@ pub struct ConnectionOptions {
     ///
     /// Default: `None`
     pub auth: Option<Auth>,
+    /// SSL options
+    ///
+    /// Default: `None`
+    pub ssl: Option<SSLConfig>,
 }
 
 impl Default for ConnectionOptions {
@@ -91,6 +116,7 @@ impl Default for ConnectionOptions {
             hosts: vec![Host::default()],
             db: "admin".to_string(),
             auth: None,
+            ssl: None,
         }
     }
 }
@@ -106,9 +132,9 @@ pub struct ConnectionOptionsBuilder(ConnectionOptions);
 
 impl ConnectionOptionsBuilder {
     pub fn with_host(&mut self, hostname: &str, port: u16) -> &mut ConnectionOptionsBuilder {
-        self.0.hosts.push(Host{
+        self.0.hosts.push(Host {
             hostname: hostname.to_string(),
-            port
+            port,
         });
         self
     }
@@ -119,9 +145,41 @@ impl ConnectionOptionsBuilder {
     }
 
     pub fn with_auth(&mut self, username: &str, password: &str) -> &mut ConnectionOptionsBuilder {
-        self.0.auth = Some(Auth{
+        self.0.auth = Some(Auth {
             username: username.to_string(),
             password: password.to_string(),
+        });
+        self
+    }
+
+    pub fn with_ssl(
+        &mut self,
+        ca_file: Option<&'static str>,
+        certificate_file: &'static str,
+        key_file: &'static str,
+        verify_peer: bool,
+    ) -> &mut ConnectionOptionsBuilder {
+        self.0.ssl = Some(SSLConfig {
+            ca_file,
+            certificate_file: Some(certificate_file),
+            key_file: Some(key_file),
+            verify_peer,
+            kind: SSLKind::Authenticated,
+        });
+        self
+    }
+
+    pub fn with_unauthenticated_ssl(
+        &mut self,
+        ca_file: Option<&'static str>,
+        verify_peer: bool,
+    ) -> &mut ConnectionOptionsBuilder {
+        self.0.ssl = Some(SSLConfig {
+            ca_file,
+            certificate_file: None,
+            key_file: None,
+            verify_peer,
+            kind: SSLKind::Unauthenticated,
         });
         self
     }
@@ -138,9 +196,7 @@ pub struct MongodbConnectionManager {
 
 impl MongodbConnectionManager {
     pub fn new(options: ConnectionOptions) -> MongodbConnectionManager {
-        MongodbConnectionManager {
-            options
-        }
+        MongodbConnectionManager { options }
     }
 
     pub fn new_with_uri(uri: &str) -> Result<MongodbConnectionManager, Error> {
@@ -170,10 +226,35 @@ impl ManageConnection for MongodbConnectionManager {
 
     fn connect(&self) -> Result<Database, Error> {
         let mut rng = thread_rng();
-        let host = self.options.hosts.as_slice().choose(&mut rng)
+        let host = self
+            .options
+            .hosts
+            .as_slice()
+            .choose(&mut rng)
             .ok_or(Error::ArgumentError("No host provided".into()))?;
 
-        let client = Client::connect(&host.hostname, host.port)?;
+        let client = match &self.options.ssl {
+            Some(ssl_options) => {
+                let client_options = match ssl_options.kind {
+                    SSLKind::Authenticated => mongodb::ClientOptions::with_ssl(
+                        ssl_options.ca_file,
+                        ssl_options
+                            .certificate_file
+                            .expect("certificate_file is required with SSLKind::Authenticated"),
+                        ssl_options
+                            .key_file
+                            .expect("key_file is required with SSLKind::Authenticated"),
+                        ssl_options.verify_peer,
+                    ),
+                    SSLKind::Unauthenticated => mongodb::ClientOptions::with_unauthenticated_ssl(
+                        ssl_options.ca_file,
+                        ssl_options.verify_peer,
+                    ),
+                };
+                Client::connect_with_options(&host.hostname, host.port, client_options)?
+            }
+            None => Client::connect(&host.hostname, host.port)?,
+        };
         let db = client.db(&self.options.db);
 
         if let Some(ref auth) = self.options.auth {
