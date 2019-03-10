@@ -241,7 +241,7 @@ impl MongodbConnectionManager {
                     }
                 };
 
-                if (ssl_enabled) {
+                if ssl_enabled {
                     options_builder.with_unauthenticated_ssl(None, VerifyPeer::No);
                 }
             }
