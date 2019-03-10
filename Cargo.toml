@@ -11,3 +11,7 @@ repository = "https://gitlab.com/petoknm/r2d2-mongodb"
 mongodb = { version = "0.3.12", features = [ 'ssl' ] }
 r2d2 = "0.8.3"
 rand = "0.6.4"
+
+[features]
+default = []
+ssl = []

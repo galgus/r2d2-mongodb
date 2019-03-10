@@ -229,6 +229,24 @@ impl MongodbConnectionManager {
             options_builder.with_host(&h.host_name, h.port);
         }
 
+        #[cfg(feature = "ssl")]
+        {
+            if let Some(options) = cs.options {
+                let ssl_enabled = match options.get("ssl") {
+                    Some(ssl) if ssl == "true" => true,
+                    Some(ssl) if ssl == "false" => false,
+                    _ => {
+                        Err(Error::ArgumentError("Invalid SSL option.".to_string()))?;
+                        false
+                    }
+                };
+
+                if (ssl_enabled) {
+                    options_builder.with_unauthenticated_ssl(None, VerifyPeer::No);
+                }
+            }
+        }
+
         let options = options_builder.build();
         Ok(MongodbConnectionManager { options })
     }
