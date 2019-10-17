@@ -39,6 +39,7 @@
 pub extern crate mongodb;
 pub extern crate r2d2;
 extern crate rand;
+extern crate urlencoding;
 
 use mongodb::connstring::parse;
 use mongodb::db::{Database, ThreadedDatabase};
@@ -46,6 +47,7 @@ use mongodb::{Client, ClientOptions, Error, ThreadedClient};
 use r2d2::ManageConnection;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use std::fmt;
 
 #[derive(Clone)]
 pub struct Host {
@@ -222,7 +224,10 @@ impl MongodbConnectionManager {
         }
 
         if let (Some(user), Some(password)) = (cs.user, cs.password) {
-            options_builder.with_auth(&user, &password);
+            options_builder.with_auth(
+                &urlencoding::decode(&user).map_err(map_error)?,
+                &urlencoding::decode(&password).map_err(map_error)?,
+            );
         }
 
         for h in cs.hosts {
@@ -302,4 +307,8 @@ impl ManageConnection for MongodbConnectionManager {
     fn has_broken(&self, _db: &mut Database) -> bool {
         false
     }
+}
+
+fn map_error<T: fmt::Debug>(e: T) -> Error {
+    Error::ArgumentError(format!("{:?}", e))
 }
