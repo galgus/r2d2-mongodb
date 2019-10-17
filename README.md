@@ -5,6 +5,8 @@
 
 A MongoDB adaptor for r2d2 connection pool.
 
+> fork from https://gitlab.com/petoknm/r2d2-mongodb
+
 ## Documentation
 
 [In progress...](https://docs.rs/r2d2-mongodb)
