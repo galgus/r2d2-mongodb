@@ -48,6 +48,7 @@ use r2d2::ManageConnection;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::fmt;
+use std::ops::Deref;
 
 #[derive(Clone)]
 pub struct Host {
@@ -257,11 +258,31 @@ impl MongodbConnectionManager {
     }
 }
 
+pub struct MongoConnection {
+    client: Client,
+    db: Database,
+}
+
+impl Deref for MongoConnection {
+    type Target = Database;
+
+    fn deref(&self) -> &Self::Target {
+        &self.db
+    }
+}
+
+impl Drop for MongoConnection {
+    fn drop(&mut self) {
+//        println!("drop MongoConnection");
+        self.client.try_release();
+    }
+}
+
 impl ManageConnection for MongodbConnectionManager {
-    type Connection = Database;
+    type Connection = MongoConnection;
     type Error = Error;
 
-    fn connect(&self) -> Result<Database, Error> {
+    fn connect(&self) -> Result<Self::Connection, Error> {
         let host = self
             .options
             .hosts
@@ -296,16 +317,18 @@ impl ManageConnection for MongodbConnectionManager {
             db.auth(&auth.username, &auth.password)?;
         }
 
-        Ok(db)
+        Ok(MongoConnection {
+            client, db,
+        })
     }
 
-    fn is_valid(&self, db: &mut Database) -> Result<(), Error> {
-        db.version()?;
+    fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Error> {
+        conn.db.version()?;
         Ok(())
     }
 
-    fn has_broken(&self, _db: &mut Database) -> bool {
-        false
+    fn has_broken(&self, conn: &mut Self::Connection) -> bool {
+        self.is_valid(conn).is_err()
     }
 }
 
