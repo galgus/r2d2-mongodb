@@ -9,11 +9,7 @@ readme = "README.md"
 repository = "https://gitlab.com/petoknm/r2d2-mongodb"
 
 [dependencies]
-mongodb = { git="https://github.com/armersong/mongodb-rs.git", features = [ 'ssl' ] }
+mongodb = { version="0.9" }
 r2d2 = "0.8"
-rand = "0.6.4"
+rand = "0.7"
 urlencoding = "1.0"
-
-[features]
-default = []
-ssl = []

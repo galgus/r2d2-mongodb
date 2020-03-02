@@ -41,14 +41,23 @@ pub extern crate r2d2;
 extern crate rand;
 extern crate urlencoding;
 
-use mongodb::connstring::parse;
-use mongodb::db::{Database, ThreadedDatabase};
-use mongodb::{Client, ClientOptions, Error, ThreadedClient};
+pub mod connstring;
+
+use mongodb::Client;
+use mongodb::Database;
+use mongodb::options::{auth::Credential, ClientOptions, StreamAddress, Tls, TlsOptions};
+use mongodb::error::{Error, ErrorKind::ArgumentError};
+
 use r2d2::ManageConnection;
+
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+
 use std::fmt;
 use std::ops::Deref;
+
+use crate::connstring::parse;
+
 
 #[derive(Clone)]
 pub struct Host {
@@ -271,13 +280,6 @@ impl Deref for MongoConnection {
     }
 }
 
-impl Drop for MongoConnection {
-    fn drop(&mut self) {
-//        println!("drop MongoConnection");
-        self.client.try_release();
-    }
-}
-
 impl ManageConnection for MongodbConnectionManager {
     type Connection = MongoConnection;
     type Error = Error;
@@ -288,34 +290,52 @@ impl ManageConnection for MongodbConnectionManager {
             .hosts
             .as_slice()
             .choose(&mut thread_rng())
-            .ok_or(Error::ArgumentError("No host provided".to_string()))?;
+            .ok_or::<Error>(ArgumentError { message: "No host provided".to_string() }.into())?;
 
-        let client_options = self
+        let mut client_options = self
             .options
             .ssl
             .as_ref()
             .map(|ssl| {
                 let verify_peer = ssl.verify_peer == VerifyPeer::Yes;
-                let ca_file_str = ssl.ca_file.as_ref().map(|s| s.as_str());
+                let ca_file_str = ssl.ca_file.clone();
 
-                match ssl.cert {
-                    Some(ref cert) => ClientOptions::with_ssl(
-                        ca_file_str,
-                        cert.certificate_file.as_str(),
-                        cert.key_file.as_str(),
-                        verify_peer,
-                    ),
-                    None => ClientOptions::with_unauthenticated_ssl(ca_file_str, verify_peer),
+                match ssl.cert.clone() {
+                    Some(cert) => ClientOptions::builder()
+                        .tls(Tls::Enabled(
+                            TlsOptions::builder()
+                                .ca_file_path(ca_file_str)
+                                .cert_key_file_path(cert.key_file)
+                                .allow_invalid_certificates(!verify_peer)
+                                .build(),
+                        )),
+                    None => ClientOptions::builder()
+                        .tls(Tls::Enabled(
+                            TlsOptions::builder()
+                                .ca_file_path(ca_file_str)
+                                .allow_invalid_certificates(!verify_peer)
+                                .build(),
+                        )),
                 }
+                .hosts(vec!(StreamAddress {
+                    hostname: host.hostname.clone(),
+                    port: Some(host.port),
+                }))
+                .build()
             })
-            .unwrap_or(ClientOptions::new());
-
-        let client = Client::connect_with_options(&host.hostname, host.port, client_options)?;
-        let db = client.db(&self.options.db);
+            .unwrap_or(ClientOptions::default());
 
         if let Some(ref auth) = self.options.auth {
-            db.auth(&auth.username, &auth.password)?;
+            client_options.credential = Some(
+                Credential::builder()
+                    .username(auth.username.clone())
+                    .password(auth.password.clone())
+                    .build()
+            );
         }
+
+        let client = Client::with_options(client_options)?;
+        let db = client.database(&self.options.db);
 
         Ok(MongoConnection {
             client, db,
@@ -323,7 +343,7 @@ impl ManageConnection for MongodbConnectionManager {
     }
 
     fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Error> {
-        conn.db.version()?;
+        conn.client.list_database_names(None)?;
         Ok(())
     }
 
@@ -333,5 +353,5 @@ impl ManageConnection for MongodbConnectionManager {
 }
 
 fn map_error<T: fmt::Debug>(e: T) -> Error {
-    Error::ArgumentError(format!("{:?}", e))
+    ArgumentError { message: format!("{:?}", e) }.into()
 }
