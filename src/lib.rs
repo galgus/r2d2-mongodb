@@ -323,7 +323,13 @@ impl ManageConnection for MongodbConnectionManager {
                 }))
                 .build()
             })
-            .unwrap_or(ClientOptions::default());
+            .unwrap_or(ClientOptions::builder()
+                .hosts(vec!(StreamAddress {
+                    hostname: host.hostname.clone(),
+                    port: Some(host.port),
+                }))
+                .build()
+            );
 
         if let Some(ref auth) = self.options.auth {
             client_options.credential = Some(
